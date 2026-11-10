@@ -131,7 +131,8 @@ def spec_annotations(spec):
         if len(xs) > 1:
             R.append((round(xs[-1] - xs[0]), d))
     for o in spec.get("openings", []):
-        R.append((round(float(o["to"]) - float(o["from"])), ""))
+        R.append((round(float(o["to"]) - float(o["from"])),
+                  "V" if o.get("axis") == "x" else "H"))
     return [(float(v), d) for v, d in R if v >= 100]
 
 
