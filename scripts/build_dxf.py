@@ -1,23 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""阶段7：由轴网规格生成 DXF 线稿。坐标从标注累加得来，不照抄图片像素。
 
-spec.json
-{
-  "walls_x": [0, 1600, 4400, 7200],
-  "walls_y": [0, 2800, 4950],
-  "thickness": 200,
-  "wall_thickness": {"x": [240, 200, 200, 240], "y": [240, 200, 240]},
-  "openings": [
-    {"axis": "x", "at": 1600, "from": 600, "to": 1500, "type": "door"},
-    {"axis": "y", "at": 2800, "from": 1200, "to": 2400, "type": "window"}
-  ],
-  "dim": {"enabled": true, "offset": 1200}
-}
 
-用法
-  python build_dxf.py --spec temp/spec.json --out output/平面图.dxf
-"""
 import argparse
 import json
 import os
@@ -40,7 +22,6 @@ def thickness_of(spec, axis, idx, n):
 
 
 def split_spans(lo, hi, cuts):
-    """在 [lo,hi] 上挖掉 cuts 区间。"""
     spans = [(lo, hi)]
     for c0, c1 in sorted(cuts):
         nxt = []
@@ -79,15 +60,15 @@ def main():
 
     openings = spec.get("openings", [])
 
-    # 外墙外皮：用相邻外墙的厚度外扩，墙线才能在转角处自然闭合
+
     tx0 = thickness_of(spec, "x", 0, len(wx))
     tx1 = thickness_of(spec, "x", len(wx) - 1, len(wx))
     ty0 = thickness_of(spec, "y", 0, len(wy))
     ty1 = thickness_of(spec, "y", len(wy) - 1, len(wy))
-    v_lo, v_hi = y0 - ty0 / 2, y1 + ty1 / 2      # 垂直墙的 Y 范围
-    h_lo, h_hi = x0 - tx0 / 2, x1 + tx1 / 2      # 水平墙的 X 范围
+    v_lo, v_hi = y0 - ty0 / 2, y1 + ty1 / 2
+    h_lo, h_hi = x0 - tx0 / 2, x1 + tx1 / 2
 
-    # ---- 垂直墙（X = wx[i]）
+
     for i, xi in enumerate(wx):
         t = thickness_of(spec, "x", i, len(wx))
         raw = [(float(o["from"]), float(o["to"])) for o in openings
@@ -96,7 +77,7 @@ def main():
             msp.add_line((xi - t / 2, a), (xi - t / 2, b), dxfattribs={"layer": "WALL"})
             msp.add_line((xi + t / 2, a), (xi + t / 2, b), dxfattribs={"layer": "WALL"})
 
-    # ---- 水平墙（Y = wy[j]）
+
     for j, yj in enumerate(wy):
         t = thickness_of(spec, "y", j, len(wy))
         raw = [(float(o["from"]), float(o["to"])) for o in openings
@@ -105,7 +86,7 @@ def main():
             msp.add_line((a, yj - t / 2), (b, yj - t / 2), dxfattribs={"layer": "WALL"})
             msp.add_line((a, yj + t / 2), (b, yj + t / 2), dxfattribs={"layer": "WALL"})
 
-    # ---- 洞口符号
+
     for o in openings:
         w = float(o["to"]) - float(o["from"])
         if o["axis"].lower() == "x":
@@ -126,7 +107,7 @@ def main():
                 for dy in (-60, 60):
                     msp.add_line((a, yj + dy), (b, yj + dy), dxfattribs={"layer": "OPENING"})
 
-    # ---- 轴网标注
+
     dimcfg = spec.get("dim", {})
     if dimcfg.get("enabled", True):
         off = float(dimcfg.get("offset", 1200))

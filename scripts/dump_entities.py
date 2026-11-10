@@ -1,18 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""阶段3：从 DXF/DWG 抽出所有线段，写成 entities.json。
 
-策略
-  1. 给 .dxf → ezdxf 直读，不依赖 AutoCAD
-  2. 给 .dwg → 若装了 AutoCAD 则用 win32com 另存为 DXF 再读；否则报错让用户先转格式
 
-输出结构
-  {"source": ..., "lines": [{"s":[x,y], "e":[x,y], "layer":...}], "bbox": [x0,y0,x1,y1]}
-
-用法
-  python dump_entities.py --file 平面图.dwg --out temp/entities.json
-  python dump_entities.py --file 平面图.dxf --out temp/entities.json --layers WALL,PUB_WALL
-"""
 import argparse
 import json
 import math
@@ -29,7 +16,7 @@ def dwg_to_dxf(path, outdir):
     app = wc.Dispatch("AutoCAD.Application")
     app.Visible = False
     doc = app.Documents.Open(os.path.abspath(path))
-    doc.SaveAs(os.path.abspath(out), 61)  # 61 = ac2013_dxf
+    doc.SaveAs(os.path.abspath(out), 61)
     doc.Close(False)
     print("dwg -> dxf:", out)
     return out

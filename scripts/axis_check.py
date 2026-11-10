@@ -1,34 +1,17 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""阶段4-6：墙轴化 + 双向对账。整套方法的核心。
 
-两个必须做对的点
-  1. 墙是双线。图上标注量的是轴线间距，DWG 画的是墙皮线，直接比长度会
-     系统性地多出/少掉一个墙厚。所以先做墙皮合并，把成对双线还原成中线。
-  2. 标注 = 两点距离。同一道墙轴上的端点两两求距，这个集合天然覆盖
-     「两段线加起来」和「大数减小数」，且几何必然成立。
 
-用法
-  python axis_check.py --entities temp/entities.json --ann 10640,12400 --outdir temp
-  python axis_check.py --entities temp/entities.json --from-spec temp/spec.json --outdir temp
-  python axis_check.py --entities temp/self.json --from-spec temp/spec.json --no-merge
-
-输出
-  axis.json    轴、端点、距离候选
-  report.txt   对账结论
-"""
 import argparse
 import itertools
 import json
 import math
 import os
 
-KEY_TOL = 12.0      # 同一条墙轴：固定坐标相差不超过此值
-GAP_TOL = 400.0     # 同一条连续墙轴：段间空隙不超过此值
-PT_TOL = 6.0        # 端点合并容差
-PAIR_MAX = 300.0    # 双线配对的墙厚上限
-PAIR_MIN = 20.0     # 双线配对的最小间距（再小是同一条线画重）
-OVERLAP = 0.75      # 双线配对要求的最小区间重叠比
+KEY_TOL = 12.0
+GAP_TOL = 400.0
+PT_TOL = 6.0
+PAIR_MAX = 300.0
+PAIR_MIN = 20.0
+OVERLAP = 0.75
 THICKS = (50, 60, 80, 100, 120, 125, 150, 160, 180, 200, 220, 240, 250, 300)
 
 
@@ -51,7 +34,6 @@ def load_segments(entities_path):
 
 
 def merge_wall_pairs(segs):
-    """把共线且高度重叠的成对线合并为中线。墙皮 -> 轴线。"""
     segs = sorted(segs, key=lambda s: s[2])
     used = [False] * len(segs)
     out = []
@@ -118,7 +100,6 @@ def axis_points(ax):
 
 
 def axis_distances(ax):
-    """同一条墙轴上的端点距离——用于洞口定位、墙段长度这类局部尺寸。"""
     pts = axis_points(ax)
     out = []
     for i in range(len(pts)):
@@ -129,13 +110,9 @@ def axis_distances(ax):
 
 
 def axis_cross_distances(axes):
-    """轴与轴的间距——开间、进深、总尺寸都这么标。
-
-    洞口会打断墙线，靠线段端点量不出轴距，只能拿轴线坐标两两求差。
-    """
     out = []
-    # 方向要反过来标：两片水平墙的 Y 值差是竖直方向的距离（竖排标注），
-    # 两片垂直墙的 X 值差是水平方向的距离（横排标注）。
+
+
     for ad, sd in (("H", "V"), ("V", "H")):
         keys = sorted({round(a["key"], 1) for a in axes if a["dir"] == ad})
         for i in range(len(keys)):
@@ -146,7 +123,6 @@ def axis_cross_distances(axes):
 
 
 def spec_annotations(spec):
-    """从 spec 自动生成自检用的标注集：轴间距、总跨、洞口宽。"""
     R = []
     for w, d in (("walls_x", "H"), ("walls_y", "V")):
         xs = sorted(float(v) for v in spec.get(w, []))
@@ -160,11 +136,6 @@ def spec_annotations(spec):
 
 
 def explain_by_ann(L, R, tol):
-    """DWG 单线长度能否由标注解释。
-
-    DWG 的单线段是墙皮线，比轴线尺寸多出半个到整墙厚，所以先按原值试，
-    再按「扣掉一个墙厚」试。否则所有外墙总尺寸都会被误报成凭空尺寸。
-    """
     for r in R:
         if abs(r - L) <= tol:
             return ("单值", r, abs(r - L))
@@ -219,8 +190,7 @@ def main():
               open(os.path.join(args.outdir, "axis.json"), "w", encoding="utf-8"),
               ensure_ascii=False)
 
-    # 标注形如 10640 或 10640:H。带方向就只在该方向的墙轴上找——
-    # 横排标注量的是 X 距离，落到垂直墙上才是同一件事，不校验方向会大量假阳性。
+
     ann = []
     for src, kind in ((args.ann, "axis"), (args.ann_line, "line")):
         raw = src.replace("，", ",")
@@ -279,7 +249,7 @@ def main():
         ba = min(axd, key=lambda d: abs(d["len"] - r)) if axd else None
         ds = abs(bs["len"] - r) if bs else 1e9
         da = abs(ba["len"] - r) if ba else 1e9
-        # 单线长度类标注只能在同一道墙轴上量出来，跨轴的数值偶合不算数。
+
         if kinds[r] == "line" and ds > 10:
             tag, hit, dd, kind = "缺", (bs if bs else ba), ds, ""
             stat["缺"].append(r)
@@ -295,7 +265,7 @@ def main():
         if ds <= 10:
             tag, hit, dd, kind = "对", bs, ds, "段内"
         elif da <= 10:
-            # 轴距类标注本来就跨轴，命中就是对的；未分类的才降级为半对。
+
             tag = "对" if kinds[r] == "axis" else "半对"
             hit, dd, kind = ba, da, "轴距"
         elif ds <= 50 or da <= 50:

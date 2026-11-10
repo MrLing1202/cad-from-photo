@@ -1,18 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""阶段1：把平面图切成适合视觉模型读标注的小块。
 
-产出（全部写入 --outdir）：
-  full_small.png      整图缩略，看布局
-  zone_r{r}c{c}.png   九宫格，每块放大2倍，用于逐块读数字
-  edge_top/bottom/left/right.png  四边缘条，补读被裁掉的总尺寸
-  key_*.png           指定关键数字的定点复核块（需 --points）
 
-用法：
-  python read_annotations.py --image 90179.jpg --outdir temp
-  python read_annotations.py --image 90179.jpg --outdir temp --points "10600:1952:150;12400:1952:2520"
-  --points 格式  数字:像素x:像素y[;数字:像素x:像素y...]
-"""
 import argparse
 import os
 
@@ -42,12 +29,12 @@ def main():
     W, H = im.size
     print("image:", args.image, W, "x", H)
 
-    # 整图缩略
+
     p = os.path.join(out, "full_small.png")
     im.resize((1500, int(H * 1500 / W)), Image.LANCZOS).save(p)
     print("saved", p)
 
-    # 九宫格
+
     cols, rows = (int(x) for x in args.grid.lower().split("x"))
     for r in range(rows):
         for c in range(cols):
@@ -58,7 +45,7 @@ def main():
             crop.save(p)
             print("saved", p, box)
 
-    # 四边缘条（补读总尺寸，被九宫格边界切掉的常在这里）
+
     edge_h = max(180, int(H * 0.10))
     edge_w = max(180, int(W * 0.08))
     bands = {
@@ -72,7 +59,7 @@ def main():
         up(im.crop(box), 1.2).save(p)
         print("saved", p, box)
 
-    # 关键数字定点复核
+
     for item in filter(None, (s.strip() for s in args.points.split(";"))):
         val, x, y = item.split(":")
         cx, cy = int(float(x)), int(float(y))
