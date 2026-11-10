@@ -1,0 +1,1 @@
+{"walls_x": [0, 1600, 4400, 7200, 10640], "walls_y": [0, 2800, 4950, 8500], "thickness": 200, "wall_thickness": {"x": [240, 200, 200, 200, 240], "y": [240, 200, 200, 240]}, "openings": [{"axis": "x", "at": 0, "from": 600, "to": 1500, "type": "door"}, {"axis": "y", "at": 2800, "from": 1200, "to": 2400, "type": "window"}], "dim": {"enabled": true, "offset": 1200}}
