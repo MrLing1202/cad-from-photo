@@ -1,100 +1,98 @@
-# 图注成线 · Cad From Photo
+# 图注成线
 
-把一张平面图照片，变成一份可编辑的 CAD 线稿。
+从平面图照片读取尺寸标注，用来核对已有 CAD 图，或者按读到的轴网直接生成 DXF。
 
-## 只信标注
+## 来历
 
-图纸上唯一精确的东西，是人写上去的尺寸数字。
+这份工具来自一次真实的核对。一张手机拍的平面图，一个别人画好的 DWG，要确认图有没有画错。
 
-照片有透视，打印有拉伸，像素量出来的墙线永远差一点。所以这里不比像素，只核数字。
+第一次比的是墙线的像素坐标。无论怎么调阈值都对不上。照片有透视，打印也有拉伸，墙线量出来的距离不能直接当尺寸用。
 
-| 手上有什么 | 拿到什么 |
-|:---|:---|
-| 照片 + 已有 CAD | 逐条指出哪里画漏了、画错了 |
-| 只有一张照片 | 从零生成可编辑的 DXF |
+换成读图上的标注数字，对账才做得下去。62 个去重标注里，57 个在 DWG 里有对应的墙体距离。一开始有 6 个被判成图上多出来的尺寸，后来发现是其他标注相减得到的值，图纸本身没错。剩下 12400 一个，DWG 里没有这段墙，Y 方向最低只到 -4424，标注落在更下面。
 
-一套引擎，两个入口。每条结论都能被图上的数字解释回来；解释不回来的，单独列出。
+那一轮踩到的坑，现在都写进了脚本。
 
-## 快速开始
+## 安装
 
 ```bash
-git clone https://github.com/MrLing1202/cad-from-photo.git
-cd cad-from-photo
 pip install ezdxf pillow pywin32
 ```
 
-`pywin32` 仅用于 DWG 转 DXF，需本机装有 AutoCAD。DXF 输入不需要。
+`pywin32` 只在 DWG 转 DXF 时用到，需要本机装 AutoCAD。DXF 输入用不到它。
 
-验证引擎是否正常：
+## 用法
 
-```bash
-python scripts/build_dxf.py --spec examples/spec.json --out demo.dxf
-python scripts/dump_entities.py --file demo.dxf --out self.json
-python scripts/axis_check.py --entities self.json --from-spec examples/spec.json --outdir .
-```
-
-期望输出见 `examples/self_check_report.txt`，九项全中。
-
-## 完整流程
+读图。按 3x3 切分标注，取不准的数字再定点放大复核一遍。
 
 ```bash
 python scripts/read_annotations.py --image 平面图.jpg --outdir temp/ann --grid 3x3
+```
+
+抽线。DWG 走 AutoCAD 转换，DXF 直接读。
+
+```bash
 python scripts/dump_entities.py --file 原图.dwg --out temp/entities.json
+```
+
+对账。抽出来的线跟标注集逐条比，输出 `report.txt` 和 `axis.json`。
+
+```bash
 python scripts/axis_check.py --entities temp/entities.json --ann "10640:H,8500:V" --outdir temp
+```
+
+成线。按 spec 生成双线墙体、门窗洞口和尺寸链。
+
+```bash
 python scripts/build_dxf.py --spec temp/spec.json --out temp/plan.dxf
 ```
 
-读图、抽线、对账、成线。中间产物是一份 spec，记轴线坐标、墙厚、洞口、标注集。改它，结果就改。
+生成物要能被自己的标注集解释回来再交付。
 
-## 报告怎么读
+```bash
+python scripts/axis_check.py --entities self.json --from-spec temp/spec.json --outdir temp
+```
+
+## 中间产物
+
+整条流程以一份 spec 为准。
+
+```json
+{
+  "walls_x": [0, 1600, 4400, 7200, 10640],
+  "walls_y": [0, 2800, 4950, 8500],
+  "thick_x": 200,
+  "thick_y": 240,
+  "openings": [{"axis": "x", "at": 0, "from": 600, "to": 1500, "type": "门"}],
+  "ann_axis": ["10640:H", "8500:V", "3550:V", "2150:V", "1600:H"],
+  "ann_line": ["12400:H"]
+}
+```
+
+`walls_x` 和 `walls_y` 存轴线的绝对坐标，单位 mm，间距由脚本自己算。墙体厚度拿不准时先按 200 和 240 填，对账会报出口径差，那个差值就是实际墙厚。
+
+标注带方向后缀。`10640:H` 量的是横向，`8500:V` 量的是纵向。不标方向的标注会到处命中，同一张图上 10640 和 12400 能在错的方向找到等值。
+
+## 判定口径
 
 | 差值 | 判定 | 处理 |
 |:---|:---|:---|
 | ≤ 10mm | 对 | 忽略 |
-| 10–50mm | 存疑 | 多为取整误差 |
-| 接近墙厚量级 | 口径差 | 正常，不判错 |
+| 10 到 50mm | 存疑 | 多为取整误差，人工过一眼 |
+| 接近墙厚量级 | 口径差 | 净空与含墙厚的差别，不判错 |
 | 跨轴等值 | 跨轴 | 回到位置核实 |
-| 其余 | 缺 / 画错 | 要改图 |
+| 其余 | 缺或画错 | 要改图 |
 
-先看「缺」，那是漏画的墙；再看「存疑」，是读数误差；「口径差」可以放过。
+读报告先看缺，那是漏画的墙。存疑是读数误差。口径差可以放过。
 
-「跨轴」最容易被放过。同样的长度在别处恰好存在，不代表这根线画了。
+跨轴这一类容易漏判。某个长度在图上别处恰好等值，不代表这个位置真有这根线，要回到那个方向那个轴段上确认。
 
-## 结构
+## 局限
 
-```
-cad-from-photo/
-├── SKILL.md                   # 方法与纪律
-├── scripts/
-│   ├── read_annotations.py    # 标注提取与复核
-│   ├── dump_entities.py       # DWG / DXF 抽线
-│   ├── axis_check.py          # 对账与判定
-│   └── build_dxf.py           # spec → DXF
-└── examples/
-    ├── spec.json              # 轴网示例
-    ├── demo.dxf               # 可直接打开
-    └── self_check_report.txt  # 期望自检输出
-```
-
-## 它做不到什么
-
-- **照片严重透视**：墙线角度失真，几何对账失效，需先人工校正
-- **同轴墙厚不一**：外墙与隔墙混用，轴线可能偏移，核 `axis.json`
-- **标注被遮挡**：读不全就是读不全，不用对称性补数
-- **图幅只覆盖局部**：判「缺」之前，先确认那道墙不在图幅之外
-
-## 一次真实核对
-
-某张平面图，62 个去重标注，DWG 145 条线。
-
-57 个标注找到对应。其中 6 个初判为「图上凭空多出的尺寸」，实际是标注相减得来的。剩下 1 条判缺：底部那道横墙整个没画，DWG 的范围根本到不了那个位置。
-
-能靠加减解释的尺寸不算错；在别处恰好找到等值的，也不算对。
+- 照片透视严重时墙线角度失真，几何对账会失效，得先人工校正
+- 同一道轴上外墙和隔墙厚度不一时，轴线定位会偏，看 `axis.json` 里的 key 值
+- 标注被遮挡或断线，读不全就如实标出，不用对称性补数
+- 图幅只覆盖局部时，判缺之前先确认那道墙不在图幅之外
 
 ## 协议
 
 MIT
-
----
-
-图纸不会骗人，像素会。
