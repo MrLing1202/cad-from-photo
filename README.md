@@ -63,23 +63,26 @@ python scripts/build_dxf.py --spec temp/spec.json --out temp/plan.dxf
 {
   "walls_x": [0, 1600, 4400, 7200, 10640],
   "walls_y": [0, 2800, 4950, 8500],
-  "thick_x": 200,
-  "thick_y": 240,
-  "openings": [{"axis": "x", "at": 0, "from": 600, "to": 1500, "type": "门"}],
-  "ann_axis": ["10640:H", "8500:V", "3550:V", "2150:V", "1600:H"],
-  "ann_line": ["12400:H"]
+  "thickness": 200,
+  "wall_thickness": {"x": [240, 200, 200, 200, 240], "y": [240, 200, 200, 240]},
+  "openings": [{"axis": "x", "at": 0, "from": 600, "to": 1500, "type": "door"}],
+  "dim": {"enabled": true, "offset": 1200}
 }
 ```
 
 | 字段 | 含义 |
 |:---|:---|
-| `walls_x` `walls_y` | 轴线绝对坐标，单位 mm，间距由脚本计算 |
-| `thick_x` `thick_y` | 墙厚。未知时按 200 / 240 填写，对账输出的口径差即实际墙厚 |
-| `openings` | 洞口，含轴向、所属轴线、起止位置、类型 |
-| `ann_axis` | 轴距类标注，跨轴命中即成立 |
-| `ann_line` | 单线类标注，须落在同一轴段内 |
+| `walls_x` `walls_y` | 轴线绝对坐标，单位 mm。轴距由脚本按相邻差值计算，不由人工填写 |
+| `thickness` | 全局墙厚，缺省 200 |
+| `wall_thickness` | 按轴向细分墙厚。可给单值，也可按轴线逐道给数组 |
+| `openings` | 洞口，`type` 取 `door` 或 `window` |
+| `dim` | 尺寸链，`offset` 为标注线距外墙的距离 |
 
-标注后缀 `H` 与 `V` 指示量测方向。缺省方向将产生跨轴误命中，同图内等值巧合多由此而来。
+`wall_thickness` 的数组长度须等于该向轴线数。长度不符时退回 `thickness`，不报错，图会安静地错。
+
+墙厚只作用于成图。对账不读取该字段，口径差由 `axis_check` 内置的标准墙厚表比对得出。墙厚未知时应先实测再出图，不得沿用缺省值。
+
+标注方向由 `--ann` 的 `H` / `V` 后缀给出，不属于 spec。缺省方向将产生跨轴误命中，同图内等值巧合多由此而来。
 
 ## 判定
 
