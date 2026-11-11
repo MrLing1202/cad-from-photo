@@ -1,0 +1,6 @@
+{
+  "author": "Marvis",
+  "display_name": "图片标注转 CAD",
+  "description": "从平面图照片读尺寸标注，核对 DWG 或生成 DXF 线稿。每条线必须由标注强推倒算证明，推不出来判不通过",
+  "download_count": 0
+}
