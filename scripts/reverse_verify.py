@@ -99,16 +99,45 @@ def endpoints(x):
     return [x["s"], x["e"]]
 
 
-def prove_coord(v, pool, offs):
+def auto_offsets(spec):
+    """从墙厚表自动派生半墙厚与整墙厚偏移。
+
+    轴线加半墙厚就是墙皮线，这是施工图的常规画法，不需要额外旁证。
+    需要旁证的是 20/40/60 这种抹灰、面层偏移——它们没有独立物理含义，
+    单独出现时无法和画错区分开。
+    """
+    ths = set()
+    wt = spec.get("wall_thickness") or {}
+    for k in ("x", "y"):
+        for v in wt.get(k, []):
+            ths.add(float(v))
+    for k in ("thick_x", "thick_y", "thickness"):
+        v = spec.get(k)
+        if v:
+            ths.add(float(v))
+    auto = set()
+    for t in ths:
+        auto.add(round(t / 2.0, 2))
+        auto.add(round(t, 2))
+    auto.discard(0.0)
+    return auto
+
+
+def prove_coord(v, pool, offs, auto=None):
     """坐标能否由网格坐标直接解释。"""
     for a in pool:
         if abs(v - a) <= TOL:
             return ("轴位", round(a, 2), 0.0)
     for a in pool:
+        for d in (auto or ()):
+            for sgn in (1, -1):
+                if abs(v - (a + sgn * d)) <= TOL:
+                    return ("墙皮", round(a, 2), sgn * d)
+    for a in pool:
         for d in offs:
             for sgn in (1, -1):
                 if abs(v - (a + sgn * d)) <= TOL:
-                    return ("墙皮偏移", round(a, 2), sgn * d)
+                    return ("面层偏移", round(a, 2), sgn * d)
     return None
 
 
@@ -177,7 +206,16 @@ def main():
     spec = json.load(open(a.spec, encoding="utf-8"))
     gx, gy = anchors(spec)
     offs, offcnt = offsets(spec, lines)
+    auto = auto_offsets(spec)
     thick = [int(v) for v in spec.get("wall_thick_list", [100, 120, 200, 240, 370])]
+
+    # 洞口宽也是真值：门窗符号线的长度由开口尺寸决定，与轴线网格无关
+    open_vals = set()
+    for o in spec.get("openings", []):
+        try:
+            open_vals.add(round(float(o["to"]) - float(o["from"]), 2))
+        except (KeyError, TypeError, ValueError):
+            pass
 
     vals = []
     for t in spec.get("ann_axis", []):
@@ -198,8 +236,15 @@ def main():
             continue
         v = x["s"][0] if x["o"] == "V" else x["s"][1]
         pool = gx if x["o"] == "V" else gy
-        c = prove_coord(v, pool, offs)
+        c = prove_coord(v, pool, offs, auto)
         L = prove_len(x["len"], vals, thick)
+        if L is None:
+            for w in open_vals:
+                if abs(x["len"] - w) <= max(a.tol, 1.0):
+                    L = ("洞口宽", w)
+                    break
+        if c is None and any(abs(x["len"] - w) <= max(a.tol, 1.0) for w in open_vals):
+            c = ("洞口定位", 0.0, 0.0) if x["layer"].upper().find("OPEN") >= 0 else None
         if c and L:
             why = "坐标=%s%.2f%+.0f 长度=%s%.0f" % (c[0], c[1], c[2], L[0], L[1])
             rows.append({"line": x, "state": "PROVEN", "why": why})
@@ -229,9 +274,38 @@ def main():
             r["why"] = "两端接于已证线，位置由闭合约束继承"
 
     # 断头
+    # 门窗、轴线、标注、文字、填充属于符号层，端点悬空是正常画法，不计断头
+    SYM = ("OPEN", "DOOR", "WINDOW", "AXIS", "DIM", "TEXT", "HATCH", "PUB_")
+
+    def is_symbol(x):
+        u = x["layer"].upper()
+        return any(k in u for k in SYM)
+
+    # 洞口收口处墙线本来就是断开的，那里出现悬空端点是正确构造，不是断头
+    open_edges = []
+    for o in spec.get("openings", []):
+        try:
+            open_edges.append((str(o.get("axis", "")).lower(), float(o.get("at")),
+                               float(o.get("from")), float(o.get("to"))))
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    def at_opening(p):
+        for ax, at, fr, to in open_edges:
+            if ax == "x":
+                if abs(p[0] - at) <= 320 and (abs(p[1] - fr) <= a.tol or abs(p[1] - to) <= a.tol):
+                    return True
+            elif abs(p[1] - at) <= 320 and (abs(p[0] - fr) <= a.tol or abs(p[0] - to) <= a.tol):
+                return True
+        return False
+
     dangling = []
     for i, x in enumerate(lines):
+        if is_symbol(x):
+            continue
         for p in endpoints(x):
+            if at_opening(p):
+                continue
             ok = False
             for j, q in enumerate(lines):
                 if i == j:
